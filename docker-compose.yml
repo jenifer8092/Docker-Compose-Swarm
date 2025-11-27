@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  mlflow-server:
+    image: ghcr.io/mlflow/mlflow:v2.9.2
+    container_name: mlflow-server
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow-db-data:/mlflow/db
+      - mlflow-artifacts-data:/mlflow/artifacts
+    networks:
+      - traductor-net
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:///mlflow/db/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  app-traductor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app-traductor
+    ports:
+      - "8080:7860"
+    environment:
+      - OPENAI_API_KEY=${API_KEY}
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+      - ENABLE_MLFLOW=1
+      - MODEL=${MODEL:-gpt-4o-mini}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+    networks:
+      - traductor-net
+    depends_on:
+      - mlflow-server
+    restart: unless-stopped
+
+networks:
+  traductor-net:
+    driver: bridge
+
+volumes:
+  mlflow-db-data:
+  mlflow-artifacts-data:

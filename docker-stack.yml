@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  mlflow-server:
+    image: ghcr.io/mlflow/mlflow:v2.9.2
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow-db-data:/mlflow/db
+      - mlflow-artifacts-data:/mlflow/artifacts
+    networks:
+      - traductor-net
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:///mlflow/db/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+
+  app-traductor:
+    image: jeni001/traductor-genai:1.0.1
+    ports:
+      - "8080:7860"
+    environment:
+      - OPENAI_API_KEY=${API_KEY}
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+      - ENABLE_MLFLOW=1
+      - MODEL=${MODEL:-gpt-4o-mini}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+    networks:
+      - traductor-net
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+    depends_on:
+      - mlflow-server
+
+networks:
+  traductor-net:
+    driver: overlay
+
+volumes:
+  mlflow-db-data:
+  mlflow-artifacts-data:
